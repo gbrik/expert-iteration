@@ -1,0 +1,11 @@
+name: expert-iteration
+channels:
+  - aaronzs
+dependencies:
+  - python=3.6
+  - tensorflow-gpu=1.4
+  - jupyter
+  - matplotlib
+  - numpy
+  - scipy
+  - mypy
