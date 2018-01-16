@@ -1,0 +1,7 @@
+tensorflow-gpu==1.4
+jupyter
+matplotlib
+numpy
+scipy
+mypy
+line_profiler
