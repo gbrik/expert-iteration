@@ -76,8 +76,10 @@ class GamePlayer(Generic[BoardState]):
         """
         actions = np.full(game_idxs.size, -1)
         take_turn = np.array([ state.player in self.players for state in states ])
-        actions[take_turn] = self._take_turns(states[take_turn], game_idxs[take_turn])
-        self._watch_turns(states[~take_turn], game_idxs[~take_turn])
+        if np.any(take_turn):
+            actions[take_turn] = self._take_turns(states[take_turn], game_idxs[take_turn])
+        if np.any(~take_turn):
+            self._watch_turns(states[~take_turn], game_idxs[~take_turn])
         return actions
 
     def _take_turn(self, state: State[BoardState], game_idx: int) -> Action:

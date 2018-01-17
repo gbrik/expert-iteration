@@ -95,7 +95,10 @@ class Algorithm(GameAlgorithm[BoardState]):
     def mk_player(self, players: Set[Player], num_games: int = 1) -> GamePlayer[BoardState]:
         return MCTSPlayer(self, players, num_games)
 
-    def _do_search(self, node: InternalMCTSNode[BoardState]):
+    def _do_searches(self, nodes: np.ndarray) -> np.ndarray:
+        return np.array([ self._do_search(node) for node in nodes ])
+
+    def _do_search(self, node: InternalMCTSNode[BoardState]) -> np.ndarray:
         for _ in range(self.search_size):
             cur_node: MCTSNode[BoardState] = node
             cur_action = None
@@ -165,23 +168,10 @@ class MCTSPlayer(GamePlayer[BoardState]):
     def _take_turns(self, states: np.ndarray, game_idxs: np.ndarray) -> np.ndarray:
         self.nodes[game_idxs] = self.alg._setup_nodes(states, self.nodes[game_idxs])
 
-        actions = np.empty(game_idxs.size, dtype=np.int)
-        for i, state, game_idx in zip(range(game_idxs.size), states, game_idxs):
-            action, self.nodes[game_idx], self.hists[game_idx] = (
-                self._take_turn_stateless(self.nodes[game_idx], self.hists[game_idx], state))
-            actions[i] = action
-        return actions
-
-    def _take_turn_stateless(self,
-                             node: InternalMCTSNode[BoardState],
-                             hist: List[Tuple[State[BoardState], np.ndarray]],
-                             state: State[BoardState]):
-        probs = self.alg._do_search(node)
-        hist = hist + [(state, probs)]
-        act = sample(probs)
-        if act == None or state.board_state[act] != 0: #type: ignore
-            print('_take_turn invalid action: ', act, state.board_state, node.state.board_state)
-        return cast(Action, act), node, hist
+        probses = self.alg._do_searches(self.nodes[game_idxs])
+        for hist, state, probs in zip(self.hists[game_idxs], states, probses):
+            hist.append((state, probs))
+        return sample(probses)
 
     def _watch_turns(self, states: np.ndarray, game_idxs: np.ndarray):
         for state, game_idx in zip(states, game_idxs):
