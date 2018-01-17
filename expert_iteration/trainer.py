@@ -1,11 +1,14 @@
 import numpy as np
 import threading
 import queue
-from game import *
-from model import Model
-import mcts
+from typing import TypeVar, Generic, List, Tuple
+from .game import State
+from .model import Model
+from . import mcts
 
 _example_search_size = 20
+
+BoardState = TypeVar('BoardState')
 
 class Trainer(Generic[BoardState]):
     def __init__(self,
@@ -35,9 +38,9 @@ class Trainer(Generic[BoardState]):
         return example_games
 
     def play_games(self) -> List[Tuple[State[BoardState], np.ndarray, np.ndarray]]:
-        work_q = queue.Queue[Tuple[State[BoardState], queue.Queue[Tuple[np.ndarray, np.ndarray]]]]()
-        result_q = queue.Queue[List[Tuple[State[BoardState], np.ndarray, np.ndarray]]]()
-        go = queue.Queue[bool]()
+        work_q = queue.Queue() #type: ignore
+        result_q = queue.Queue() #type: ignore
+        go = queue.Queue() #type: ignore
         alive = [self.iteration_size]
         in_q = [0]
         counter_lock = threading.Lock()
@@ -53,7 +56,7 @@ class Trainer(Generic[BoardState]):
                         go.put(True)
                 return my_q.get()
 
-            result = mcts.play_self(self.game, Evaluator(eval_state=eval_state), self.search_size, 1.0)
+            result = mcts.play_self(self.game, mcts.Evaluator(eval_state=eval_state), self.search_size, 1.0)
             with counter_lock:
                 alive[0] -= 1
                 result_q.put(result)

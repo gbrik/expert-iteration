@@ -1,7 +1,7 @@
 import numpy as np
-from utils import *
-from game import *
-import mcts
+from .utils import *
+from .game import *
+from . import mcts
 
 class Model(Generic[BoardState]):
     def __init__(self, game: Game[BoardState]) -> None:

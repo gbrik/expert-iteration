@@ -1,12 +1,12 @@
 import numpy as np
 import tensorflow as tf
 import os
-from utils import *
-from game import *
-from mcts import Evaluator
-from model import Model
+from .utils import *
+from .game import *
+from . import mcts
+from . import model
 
-class TTT(Game[np.ndarray]):
+class _TTT(Game[np.ndarray]):
     _board_shape = (9,)
     num_actions = 9
     num_players = 2
@@ -15,7 +15,7 @@ class TTT(Game[np.ndarray]):
         super().__init__()
 
     def gen_root(self) -> State[np.ndarray]:
-        return State(np.zeros(TTT._board_shape, dtype=np.int), cast(Player, 1), None)
+        return State(np.zeros(_TTT._board_shape, dtype=np.int), cast(Player, 1), None)
 
     def do_action(self, state: State[np.ndarray], action: Action) -> State[np.ndarray]:
         new_board = np.copy(state.board_state)
@@ -30,9 +30,9 @@ class TTT(Game[np.ndarray]):
     _inv_end_idx = np.array(cast(List[int], sum([[3 * i, i] for i in range(3)], [])) + [2, 0])
     def check_end(self, state: State[np.ndarray]) -> np.ndarray:
         ret = np.zeros(2, dtype=np.bool)
-        z = np.flatnonzero(np.abs(np.sum(state.board_state[TTT._end_idx].reshape(8, 3), axis=1)) == 3)
+        z = np.flatnonzero(np.abs(np.sum(state.board_state[_TTT._end_idx].reshape(8, 3), axis=1)) == 3)
         if z.size:
-            ret[(state.board_state[TTT._inv_end_idx[z[0]]] + 1) // 2] = True
+            ret[(state.board_state[_TTT._inv_end_idx[z[0]]] + 1) // 2] = True
         elif np.all(state.board_state):
             ret[:] = True
         return ret
@@ -45,7 +45,7 @@ class TTT(Game[np.ndarray]):
             for j in range(3):
                 if j != 0:
                     print('|', end='')
-                print(TTT._ch[state.board_state[3 * i + j]], end='')
+                print(_TTT._ch[state.board_state[3 * i + j]], end='')
             print('')
         print('%s\' turn' % ('x' if state.player == 1 else 'o'))
 
@@ -57,20 +57,18 @@ class TTT(Game[np.ndarray]):
             raise ValueError
         return cast(Action, res)
 
-ttt = TTT()
+game = _TTT()
 
 def _ttt_eval_state(s: State[np.ndarray]) -> Tuple[np.ndarray, np.ndarray]:
-    acts = np.zeros(TTT._board_shape)
-    valid_acts = ttt.valid_actions(s)
+    acts = np.zeros(game._board_shape)
+    valid_acts = game.valid_actions(s)
     acts[valid_acts] = 1.0 / np.count_nonzero(valid_acts)
     return (acts, np.zeros(2))
 
-ttt_evaluator: Evaluator[np.ndarray] = Evaluator(eval_state=_ttt_eval_state)
+rand_evaluator = mcts.Evaluator[np.ndarray](eval_state=_ttt_eval_state)
 
 
-class TTTModel(Model[np.ndarray]):
-    game = TTT()
-
+class Model(model.Model[np.ndarray]):
     l2_loss_coeff = 0.01
     hidden_size = 100
     search_size = 100
@@ -112,7 +110,7 @@ class TTTModel(Model[np.ndarray]):
 
 
     def __init__(self):
-        super().__init__(self.game)
+        super().__init__(game)
 
         self.states = np.empty((0, 9))
         self.probs = np.empty((0, 9))
@@ -143,7 +141,7 @@ class TTTModel(Model[np.ndarray]):
 
     def eval_states(self,
                     states: List[State[np.ndarray]],
-                    using=Model.PARAMS_BEST) -> Tuple[np.ndarray, np.ndarray]:
+                    using=model.Model.PARAMS_BEST) -> Tuple[np.ndarray, np.ndarray]:
         feed = { self.tf_boards: np.array([state.board_state for state in states]) }
         sess = self.best_sess if using == Model.PARAMS_BEST else self.train_sess
         actions, values = sess.run([self.actions, self.values], feed_dict=feed)
@@ -178,13 +176,13 @@ class TTTModel(Model[np.ndarray]):
     def train_is_better(self):
         tot_games = 10
         reward = 0
-        best_alg = MCTSAlgorithm(self.game, self.best_evaluator, self.search_size)
-        train_alg = MCTSAlgorithm(self.game, self.train_evaluator, self.search_size)
+        best_alg = mcts.Algorithm(self.game, self.best_evaluator, self.search_size)
+        train_alg = mcts.Algorithm(self.game, self.train_evaluator, self.search_size)
         for i in range(tot_games):
-            reward += rewards_from_result(play_game(self.game, [({0}, best_alg), ({1}, train_alg)])[1])[1]
+            reward += mcts.rewards_from_result(play_game(self.game, [({0}, best_alg), ({1}, train_alg)])[1])[1]
         print(reward)
         for i in range(tot_games):
-            reward += rewards_from_result(play_game(self.game, [({0}, train_alg), ({1}, best_alg)])[1])[0]
+            reward += mcts.rewards_from_result(play_game(self.game, [({0}, train_alg), ({1}, best_alg)])[1])[0]
 
         avg_reward = reward / (2 * tot_games)
         print(avg_reward)

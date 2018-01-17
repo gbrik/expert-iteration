@@ -1,6 +1,5 @@
-from utils import *
-from game import *
-from typing import * #type: ignore
+from .utils import *
+from .game import *
 import numpy as np
 import math
 
@@ -82,7 +81,7 @@ class LeafMCTSNode(MCTSNode[BoardState]):
         super().__init__(state)
         self.values = values
 
-class MCTSAlgorithm(GameAlgorithm[BoardState]):
+class Algorithm(GameAlgorithm[BoardState]):
     def __init__(self,
                  game: Game[BoardState],
                  evaluator: Evaluator[BoardState],
@@ -132,7 +131,7 @@ class MCTSAlgorithm(GameAlgorithm[BoardState]):
 
 class MCTSPlayer(GamePlayer[BoardState]):
     def __init__(self,
-                 alg: MCTSAlgorithm[BoardState],
+                 alg: Algorithm[BoardState],
                  players: Set[Player]) -> None:
         super().__init__(players)
         self.alg = alg
@@ -181,7 +180,7 @@ def play_self(game: Game[BoardState],
               evaluator: Evaluator[BoardState],
               search_size: int,
               temp: float = 0.0) -> List[Tuple[State[BoardState], np.ndarray, np.ndarray]]:
-    end_state, result, players = play_game(game, [(cast(Set[Player], {0, 1}), MCTSAlgorithm(game, evaluator, search_size, temp))])
+    end_state, result, players = play_game(game, [(cast(Set[Player], {0, 1}), Algorithm(game, evaluator, search_size, temp))])
     hist = players[0].hist
     rewards = rewards_from_result(result)
 
