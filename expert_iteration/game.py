@@ -129,7 +129,24 @@ def play_game(game: Game[BoardState], mk_players: List[Tuple[Set[Player], GameAl
     return cur_state, cur_ends, players
 
 def play_games(num_games: int, game: Game[BoardState], mk_players: List[Tuple[Set[Player], GameAlgorithm[BoardState]]]):
-    return [ play_game(game, mk_players) for _ in range(num_games) ]
+    players = np.array([ [ alg.mk_player(playing_as) for playing_as, alg in mk_players ] for _ in range(num_games) ])
+    states = game.gen_roots(num_games)
+    results = np.empty((num_games, game.num_players), dtype=np.bool)
+    ongoing_games = np.arange(num_games)
+    while ongoing_games.size > 0:
+        cur_actions = np.empty(ongoing_games.size, dtype=np.int)
+        for actions_idx, game_idx in enumerate(ongoing_games):
+            for player in players[game_idx]:
+                act = player.next_turn(states[game_idx])
+                if act != None:
+                    cur_actions[actions_idx] = act
+        states[ongoing_games] = game.do_actions(states[ongoing_games], cur_actions)
+        check_ends = game.check_ends(states[ongoing_games])
+        ended = np.any(check_ends, axis=1)
+        results[ongoing_games[ended]] = check_ends[ended]
+        ongoing_games = ongoing_games[~ended]
+
+    return states, results, players
 
 class UserAlgorithm(GameAlgorithm[BoardState]):
     def __init__(self, game: Game[BoardState]) -> None:
