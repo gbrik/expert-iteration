@@ -25,7 +25,13 @@ class Model(Generic[BoardState]):
         return a[0], v[0]
 
     def train(self, batch_size=64, num_iters=1000):
-        pass
+        raise NotImplemented
 
     def add_data(self, data: List[Tuple[State[BoardState], np.ndarray, np.ndarray]]):
-        pass
+        raise NotImplemented
+
+    def new_checkpoint(self):
+        raise NotImplemented
+
+    def restore_checkpoint(self):
+        raise NotImplemented

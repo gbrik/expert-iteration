@@ -2,7 +2,7 @@ import numpy as np
 import threading
 import queue
 from typing import TypeVar, Generic, List, Tuple
-from .game import State
+from .game import State, play_game
 from .model import Model
 from . import mcts
 
@@ -31,11 +31,32 @@ class Trainer(Generic[BoardState]):
             self.model.add_data(self.play_games())
             self.model.train()
 
+            if self.train_is_better():
+                self.model.new_checkpoint()
+            else:
+                self.model.restore_checkpoint()
+
             print('finished step %d' % i)
 
         example_games.append(play_example_game())
 
         return example_games
+
+    def train_is_better(self):
+        tot_games = 10
+        reward = 0
+        best_alg = mcts.Algorithm(self.game, self.model.best_evaluator, self.search_size)
+        train_alg = mcts.Algorithm(self.game, self.model.train_evaluator, self.search_size)
+        for i in range(tot_games):
+            reward += mcts.rewards_from_result(play_game(self.game, [({0}, best_alg), ({1}, train_alg)])[1])[1]
+        print(reward)
+        for i in range(tot_games):
+            reward += mcts.rewards_from_result(play_game(self.game, [({0}, train_alg), ({1}, best_alg)])[1])[0]
+
+        avg_reward = reward / (2 * tot_games)
+        print(avg_reward)
+        return avg_reward > 0.1
+
 
     def play_games(self) -> List[Tuple[State[BoardState], np.ndarray, np.ndarray]]:
         work_q = queue.Queue() #type: ignore

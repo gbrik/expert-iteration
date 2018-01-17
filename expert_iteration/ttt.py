@@ -71,7 +71,6 @@ rand_evaluator = mcts.Evaluator[np.ndarray](eval_state=_ttt_eval_state)
 class Model(model.Model[np.ndarray]):
     l2_loss_coeff = 0.01
     hidden_size = 100
-    search_size = 100
 
     graph = tf.Graph()
     with graph.as_default():
@@ -167,27 +166,12 @@ class Model(model.Model[np.ndarray]):
 
             self.train_sess.run(self.optimizer, feed_dict=feed)
 
-        if self.train_is_better():
-            self.best_chkpnt = self.saver.save(self.train_sess, self.chkpnt_file, self.train_step)
-            self.saver.restore(self.best_sess, self.best_chkpnt)
-        else:
-            self.saver.restore(self.train_sess, self.best_chkpnt)
+    def new_checkpoint(self):
+        self.best_chkpnt = self.saver.save(self.train_sess, self.chkpnt_file, self.train_step)
+        self.saver.restore(self.best_sess, self.best_chkpnt)
 
-    def train_is_better(self):
-        tot_games = 10
-        reward = 0
-        best_alg = mcts.Algorithm(self.game, self.best_evaluator, self.search_size)
-        train_alg = mcts.Algorithm(self.game, self.train_evaluator, self.search_size)
-        for i in range(tot_games):
-            reward += mcts.rewards_from_result(play_game(self.game, [({0}, best_alg), ({1}, train_alg)])[1])[1]
-        print(reward)
-        for i in range(tot_games):
-            reward += mcts.rewards_from_result(play_game(self.game, [({0}, train_alg), ({1}, best_alg)])[1])[0]
-
-        avg_reward = reward / (2 * tot_games)
-        print(avg_reward)
-        return avg_reward > 0.1
-
+    def restore_checkpoint(self):
+        self.saver.restore(self.train_sess, self.best_chkpnt)
 
     def add_data(self, data: List[Tuple[State[np.ndarray], np.ndarray, np.ndarray]]):
         states, probs, rewards = unzip(data)
