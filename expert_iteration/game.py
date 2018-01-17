@@ -128,6 +128,9 @@ def play_game(game: Game[BoardState], mk_players: List[Tuple[Set[Player], GameAl
         print('ending early: ', cur_state.board_state)
     return cur_state, cur_ends, players
 
+def play_games(num_games: int, game: Game[BoardState], mk_players: List[Tuple[Set[Player], GameAlgorithm[BoardState]]]):
+    return [ play_game(game, mk_players) for _ in range(num_games) ]
+
 class UserAlgorithm(GameAlgorithm[BoardState]):
     def __init__(self, game: Game[BoardState]) -> None:
         self.game = game

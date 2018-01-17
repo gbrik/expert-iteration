@@ -2,9 +2,10 @@ import numpy as np
 import threading
 import queue
 from typing import TypeVar, Generic, List, Tuple
-from .game import State, play_game
+from .game import State, play_game, play_games
 from .model import Model
 from . import mcts
+from . import utils
 
 _example_search_size = 20
 
@@ -47,11 +48,15 @@ class Trainer(Generic[BoardState]):
         reward = 0
         best_alg = mcts.Algorithm(self.game, self.model.best_evaluator, self.search_size)
         train_alg = mcts.Algorithm(self.game, self.model.train_evaluator, self.search_size)
+
         for i in range(tot_games):
-            reward += mcts.rewards_from_result(play_game(self.game, [({0}, best_alg), ({1}, train_alg)])[1])[1]
-        print(reward)
+            games = play_games(tot_games, self.game, [({0}, best_alg), ({1}, train_alg)])
+            results = utils.unzip(games)[1]
+            reward += sum([ mcts.rewards_from_result(result)[1] for result in results ])
         for i in range(tot_games):
-            reward += mcts.rewards_from_result(play_game(self.game, [({0}, train_alg), ({1}, best_alg)])[1])[0]
+            games = play_games(tot_games, self.game, [({0}, train_alg), ({1}, best_alg)])
+            results = utils.unzip(games)[1]
+            reward += sum([ mcts.rewards_from_result(result)[0] for result in results ])
 
         avg_reward = reward / (2 * tot_games)
         print(avg_reward)
