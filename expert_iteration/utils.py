@@ -16,3 +16,6 @@ def softmax(x: np.ndarray, mask: np.ndarray = None) -> np.ndarray:
     else:
         exped = np.exp(x)
     return exped / np.sum(exped, axis=len(exped.shape) - 1).reshape((1,) + exped.shape[:-1]).transpose()
+
+def rescale(x: np.ndarray) -> np.ndarray:
+    return x / np.sum(x, axis=len(x.shape) - 1).reshape((1,) + x.shape[:-1]).transpose()

@@ -129,6 +129,28 @@ class Algorithm(GameAlgorithm[BoardState]):
 
         return node.probs(self.temp)
 
+    def _setup_nodes(self, states: np.ndarray, nodes: np.ndarray):
+        existing = nodes != None
+        if np.any(existing):
+            nodes[existing] = [ cast(InternalMCTSNode[BoardState], node.children[state.prev_action])
+                                for state, node in zip(states, nodes[existing])]
+
+        non_existing = nodes == None
+        if np.any(non_existing):
+            probses, _ = self.evaluator.eval_states(states[non_existing])
+            add_dirichlet = np.array([ state.prev_action == None for state in states[non_existing] ])
+            if np.any(add_dirichlet):
+                keep_zero = probses[add_dirichlet] == 0
+                dirichlets = np.random.dirichlet(np.full(self.game.num_actions, dirichlet_alpha),
+                                                 add_dirichlet.size)
+                dirichlets[keep_zero] = 0.0
+                rescale(dirichlets)
+                probses[add_dirichlet] = dirichlets
+
+            nodes[non_existing] = [ InternalMCTSNode(state, probs) for state, probs in zip(states[non_existing], probses) ]
+
+        return nodes
+
 class MCTSPlayer(GamePlayer[BoardState]):
     def __init__(self,
                  alg: Algorithm[BoardState],
@@ -141,6 +163,8 @@ class MCTSPlayer(GamePlayer[BoardState]):
         self.hists[:] = [[] for _ in range(num_games)]
 
     def _take_turns(self, states: np.ndarray, game_idxs: np.ndarray) -> np.ndarray:
+        self.nodes[game_idxs] = self.alg._setup_nodes(states, self.nodes[game_idxs])
+
         actions = np.empty(game_idxs.size, dtype=np.int)
         for i, state, game_idx in zip(range(game_idxs.size), states, game_idxs):
             action, self.nodes[game_idx], self.hists[game_idx] = (
@@ -152,16 +176,6 @@ class MCTSPlayer(GamePlayer[BoardState]):
                              node: InternalMCTSNode[BoardState],
                              hist: List[Tuple[State[BoardState], np.ndarray]],
                              state: State[BoardState]):
-        if node != None:
-            node = cast(InternalMCTSNode[BoardState], node.children[state.prev_action])
-        if node == None:
-            probs, _ = self.alg.evaluator.eval_state(state)
-            if state.prev_action == None:
-                mask = probs != 0
-                probs[mask] = ((1 - dirichlet_eps) * probs[mask] +
-                         dirichlet_eps * np.random.dirichlet(np.full_like(probs[mask], dirichlet_alpha)))
-            node = InternalMCTSNode(state, probs)
-
         probs = self.alg._do_search(node)
         hist = hist + [(state, probs)]
         act = sample(probs)
