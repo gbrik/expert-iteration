@@ -64,51 +64,5 @@ class Trainer(Generic[BoardState]):
 
 
     def play_games(self) -> List[Tuple[State[BoardState], np.ndarray, np.ndarray]]:
-        work_q = queue.Queue() #type: ignore
-        result_q = queue.Queue() #type: ignore
-        go = queue.Queue() #type: ignore
-        alive = [self.iteration_size]
-        in_q = [0]
-        counter_lock = threading.Lock()
-
-        def mp_play_self():
-            my_q = queue.Queue()
-
-            def eval_state(state: State[BoardState]) -> Tuple[np.ndarray, np.ndarray]:
-                with counter_lock:
-                    work_q.put((state, my_q))
-                    in_q[0] += 1
-                    if alive[0] == in_q[0]:
-                        go.put(True)
-                return my_q.get()
-
-            result = mcts.play_self(self.game, mcts.Evaluator(eval_state=eval_state), self.search_size, 1.0)
-            with counter_lock:
-                alive[0] -= 1
-                result_q.put(result)
-                if alive[0] == 0:
-                    go.put(False)
-                elif alive[0] == in_q[0]:
-                    go.put(True)
-
-        for _ in range(self.iteration_size):
-            threading.Thread(target=mp_play_self).start()
-
-        while go.get():
-            with counter_lock:
-                ret_qs = []
-                states = []
-                for _ in range(in_q[0]):
-                    state, ret_q = work_q.get_nowait()
-                    ret_qs.append(ret_q)
-                    states.append(state)
-                in_q[0] = 0
-                if len(states) > 0:
-                    probs, values = self.model.eval_states(states, using=Model.PARAMS_BEST)
-                    for ret_q, prob, value in zip(ret_qs, probs, values):
-                        ret_q.put((prob, value))
-
-        positions: List[Tuple[State[BoardState], np.ndarray, np.ndarray]] = []
-        while not result_q.empty():
-            positions += result_q.get_nowait()
-        return positions
+        result = mcts.play_selfs(self.iteration_size, self.game, self.model.best_evaluator, self.search_size)
+        return sum(result, [])
