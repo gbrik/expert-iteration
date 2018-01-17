@@ -140,10 +140,13 @@ class MCTSPlayer(GamePlayer[BoardState]):
         self.hists: np.ndarray = np.empty(num_games, dtype=np.object)
         self.hists[:] = [[] for _ in range(num_games)]
 
-    def _take_turn(self, state: State[BoardState], game_idx: int) -> Action:
-        action, self.nodes[game_idx], self.hists[game_idx] = (
-            self._take_turn_stateless(self.nodes[game_idx], self.hists[game_idx], state))
-        return action
+    def _take_turns(self, states: np.ndarray, game_idxs: np.ndarray) -> np.ndarray:
+        actions = np.empty(game_idxs.size, dtype=np.int)
+        for i, state, game_idx in zip(range(game_idxs.size), states, game_idxs):
+            action, self.nodes[game_idx], self.hists[game_idx] = (
+                self._take_turn_stateless(self.nodes[game_idx], self.hists[game_idx], state))
+            actions[i] = action
+        return actions
 
     def _take_turn_stateless(self,
                              node: InternalMCTSNode[BoardState],
@@ -166,9 +169,11 @@ class MCTSPlayer(GamePlayer[BoardState]):
             print('_take_turn invalid action: ', act, state.board_state, node.state.board_state)
         return cast(Action, act), node, hist
 
-    def _watch_turn(self, state: State[BoardState], game_idx: int):
-        self.nodes[game_idx], self.hists[game_idx] = (
-            self._watch_turn_stateless(self.nodes[game_idx], self.hists[game_idx], state))
+    def _watch_turns(self, states: np.ndarray, game_idxs: np.ndarray):
+        for state, game_idx in zip(states, game_idxs):
+            self.nodes[game_idx], self.hists[game_idx] = (
+                self._watch_turn_stateless(self.nodes[game_idx], self.hists[game_idx], state))
+
 
     def _watch_turn_stateless(self,
                               node: InternalMCTSNode[BoardState],
