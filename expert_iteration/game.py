@@ -58,37 +58,70 @@ class GamePlayer(Generic[BoardState]):
     the current player's turn.
     """
 
-    def next_turn(self, state: State[BoardState]) -> Action:
+    def next_turn(self, state: State[BoardState], game_idx: int = 0) -> Action:
         """
         Should be called every turn, regardless of whether it is the player's turn.
         Returns the player's move if it's their turn, otherwise returns None.
         """
         if state.player in self.players:
-            return self._take_turn(state)
+            return self._take_turn(state, game_idx)
         else:
-            self._watch_turn(state)
+            self._watch_turn(state, game_idx)
             return None
 
-    def _take_turn(self, state: State[BoardState]) -> Action: #type: ignore
+    def next_turns(self, states: np.ndarray, game_idxs: np.ndarray) -> np.ndarray:
+        """
+        Should be called every turn with each remaining game, regardless of whether it is the player's turn.
+        Returns the player's move if it's their turn, otherwise returns None.
+        """
+        actions = np.full(game_idxs.size, -1)
+        take_turn = np.array([ state.player in self.players for state in states ])
+        actions[take_turn] = self._take_turns(states[take_turn], game_idxs[take_turn])
+        self._watch_turns(states[~take_turn], game_idxs[~take_turn])
+        return actions
+
+    def _take_turn(self, state: State[BoardState], game_idx: int) -> Action:
         """
         Select the best move.
         """
-        raise NotImplemented
+        return self._take_turns(np.array([state]), np.array([game_idx]))[0]
 
-    def _watch_turn(self, state: State[BoardState]):
+    def _take_turns(self, states: np.ndarray, game_idxs: np.ndarray) -> np.ndarray:
+        """
+        Select the best move.
+        """
+        return np.array([ self._take_turn(state, game_idx) for state, game_idx in zip(states, game_idxs) ])
+
+    def _watch_turn(self, state: State[BoardState], game_idx: int):
         """
         Keep the player's internal state up to date with the game state.
         Unnecessary if the player has no internal state.
         """
-        pass
+        self._watch_turns(np.array([state]), np.array([game_idx]))
 
-    def __init__(self, players: Set[Player], take_turn = None) -> None:
+    def _watch_turns(self, states: np.ndarray, game_idxs: np.ndarray):
+        """
+        Keep the player's internal state up to date with the game state.
+        Unnecessary if the player has no internal state.
+        """
+        for state, game_idx in zip(states, game_idxs):
+            self._watch_turn(state, game_idx)
+
+    def __init__(self, players: Set[Player], num_games: int,
+                 take_turn = None, take_turns = None, watch_turn = None, watch_turns = None) -> None:
         """
         Which players this Player object is playing as.
         """
         self.players = players
+        self.num_games = num_games
         if take_turn:
             self._take_turn = take_turn #type: ignore
+        if take_turns:
+            self._take_turns = take_turns #type: ignore
+        if watch_turn:
+            self._watch_turn = watch_turn #type: ignore
+        if watch_turns:
+            self._watch_turns = watch_turns #type: ignore
 
 class GameAlgorithm(Generic[BoardState]):
     """
@@ -98,14 +131,8 @@ class GameAlgorithm(Generic[BoardState]):
     def __init__(self, game: Game[BoardState]) -> None:
         self.game = game
 
-    def mk_player(self, players: Set[Player]) -> GamePlayer[BoardState]:
+    def mk_player(self, players: Set[Player], num_games: int = 1) -> GamePlayer[BoardState]:
         raise NotImplemented
-
-    def __call__(self, players: Set[Player]) -> GamePlayer[BoardState]:
-        """
-        Simply calls mk_player, provided for convenience.
-        """
-        return self.mk_player(players)
 
 def play_game(game: Game[BoardState], mk_players: List[Tuple[Set[Player], GameAlgorithm[BoardState]]]):
     players = [ alg.mk_player(playing_as) for playing_as, alg in mk_players ]
@@ -152,8 +179,8 @@ class UserAlgorithm(GameAlgorithm[BoardState]):
     def __init__(self, game: Game[BoardState]) -> None:
         self.game = game
 
-    def mk_player(self, players: Set[Player]):
-        def take_turn(state: State[BoardState]) -> Action:
+    def mk_player(self, players: Set[Player], num_games: int = 1):
+        def take_turn(state: State[BoardState], game_idx: int) -> Action:
             self.game.render(state)
             ret = input('What is your move? ')
             while True:
@@ -164,4 +191,7 @@ class UserAlgorithm(GameAlgorithm[BoardState]):
                 else:
                     return parsed
 
-        return GamePlayer(players, take_turn)
+        def watch_turn(state: State[BoardState], game_idx: int):
+            pass
+
+        return GamePlayer(players, num_games, take_turn=take_turn, watch_turn=watch_turn)
