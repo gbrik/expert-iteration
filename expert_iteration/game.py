@@ -156,17 +156,15 @@ def play_game(game: Game[BoardState], mk_players: List[Tuple[Set[Player], GameAl
     return cur_state, cur_ends, players
 
 def play_games(num_games: int, game: Game[BoardState], mk_players: List[Tuple[Set[Player], GameAlgorithm[BoardState]]]):
-    players = np.array([ [ alg.mk_player(playing_as) for playing_as, alg in mk_players ] for _ in range(num_games) ])
+    players = [ alg.mk_player(playing_as, num_games) for playing_as, alg in mk_players ]
     states = game.gen_roots(num_games)
     results = np.empty((num_games, game.num_players), dtype=np.bool)
     ongoing_games = np.arange(num_games)
     while ongoing_games.size > 0:
-        cur_actions = np.empty(ongoing_games.size, dtype=np.int)
-        for actions_idx, game_idx in enumerate(ongoing_games):
-            for player in players[game_idx]:
-                act = player.next_turn(states[game_idx])
-                if act != None:
-                    cur_actions[actions_idx] = act
+        cur_actions = np.full(ongoing_games.size, -1, dtype=np.int)
+        for player in players:
+            acts = player.next_turns(states[ongoing_games], ongoing_games)
+            np.maximum(cur_actions, acts, out=cur_actions)
         states[ongoing_games] = game.do_actions(states[ongoing_games], cur_actions)
         check_ends = game.check_ends(states[ongoing_games])
         ended = np.any(check_ends, axis=1)

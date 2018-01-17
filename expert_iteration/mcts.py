@@ -206,12 +206,10 @@ def play_selfs(num_games: int,
                search_size: int,
                temp: float = 0.0) -> List[List[Tuple[State[BoardState], np.ndarray, np.ndarray]]]:
     turn_summaries: List[List[Tuple[State[BoardState], np.ndarray, np.ndarray]]] = []
-    _, results, playerses = play_games(num_games, game, [(cast(Set[Player], {0, 1}), Algorithm(game, evaluator, search_size, temp))])
+    _, results, players = play_games(num_games, game, [(cast(Set[Player], {0, 1}), Algorithm(game, evaluator, search_size, temp))])
 
-    for result, players in zip(results, playerses):
-        hist = players[0].hists[0]
+    for result, hist in zip(results, players[0].hists):
         rewards = rewards_from_result(result)
-
         turn_summaries.append([(state, probs, rewards) for state, probs in hist])
 
     return turn_summaries
