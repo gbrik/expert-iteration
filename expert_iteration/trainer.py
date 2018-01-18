@@ -20,11 +20,13 @@ class Trainer(Generic[BoardState]):
         self.model = model
         self.game = self.model.game
         self.num_iterations = num_iterations
+        self.self_play_opts = mcts.Opts(search_size=search_size, temp=1.0)
+        self.compare_opts = mcts.Opts(search_size=search_size)
+        self.example_opts = mcts.Opts(search_size=20)
         self.iteration_size = iteration_size
-        self.search_size = search_size
 
     def train_player(self):
-        play_example_game = lambda: mcts.play_self(self.game, self.model.train_evaluator, _example_search_size)
+        play_example_game = lambda: mcts.play_self(self.game, self.model.train_evaluator, self.example_opts)
         example_games = [play_example_game()]
 
         for i in range(1, self.num_iterations + 1):
@@ -46,8 +48,8 @@ class Trainer(Generic[BoardState]):
     def train_is_better(self):
         tot_games = 10
         reward = 0
-        best_alg = mcts.Algorithm(self.game, self.model.best_evaluator, self.search_size)
-        train_alg = mcts.Algorithm(self.game, self.model.train_evaluator, self.search_size)
+        best_alg = mcts.Algorithm(self.game, self.model.best_evaluator, self.compare_opts)
+        train_alg = mcts.Algorithm(self.game, self.model.train_evaluator, self.compare_opts)
 
         results = play_games(tot_games, self.game, [({0}, best_alg), ({1}, train_alg)])[1]
         reward += sum([ mcts.rewards_from_result(result)[1] for result in results ])
@@ -60,5 +62,5 @@ class Trainer(Generic[BoardState]):
 
 
     def play_games(self) -> List[Tuple[State[BoardState], np.ndarray, np.ndarray]]:
-        result = mcts.play_selfs(self.iteration_size, self.game, self.model.best_evaluator, self.search_size)
+        result = mcts.play_selfs(self.iteration_size, self.game, self.model.best_evaluator, self.self_play_opts)
         return sum(result, [])

@@ -18,9 +18,24 @@ class Evaluator(Generic[BoardState]):
         if eval_states != None:
             self.eval_states = eval_states #type: ignore
 
-c_puct = 1.0
-dirichlet_eps = 0.25
-dirichlet_alpha = 0.3
+class Opts:
+    def __init__(self,
+                 c_puct: float = 1.0,
+                 dirichlet_eps: float = 0.25,
+                 dirichlet_alpha: float = 0.3,
+                 search_size: int = 100,
+                 temp: float = 0.0) -> None:
+        self.c_puct = c_puct
+        self.dirichlet_eps = dirichlet_eps
+        self.dirichlet_alpha = dirichlet_alpha
+        self.search_size = search_size
+        self.temp = temp
+
+_default_opts = Opts()
+
+#c_puct = 1.0
+#dirichlet_eps = 0.25
+#dirichlet_alpha = 0.3
 
 class MCTSNode(Generic[BoardState]):
     def __init__(self, state: State[BoardState]) -> None:
@@ -48,31 +63,12 @@ class InternalMCTSNode(MCTSNode[BoardState]):
         self.total_visits: int = 1
         self.children: List[MCTSNode[BoardState]] = [None] * probs.size
 
-    def select_action(self) -> Action:
-        if not self.actions.size:
-            return None
-
-        root_total = math.sqrt(self.total_visits)
-
-        selection_priorities = self.Q + c_puct * root_total * self.P / (1 + self.N)
-        return self.actions[np.argmax(selection_priorities)]
-
     def backup(self, a, vs):
         self.total_visits = self.total_visits + 1
         idx = self.inv_actions[a]
         self.N[idx] = self.N[idx] + 1
         self.W[idx] = self.W[idx] + vs[self.state.player]
         self.Q[idx] = self.W[idx] / self.N[idx]
-
-    def probs(self, temp) -> np.ndarray:
-        if temp == 0.0:
-            ret = np.zeros_like(self.inv_actions)
-            ret[self.actions[np.argmax(self.N)]] = 1.0
-            return ret
-        exps = self.N ** (1.0 / temp)
-        ret = np.zeros_like(self.inv_actions, dtype=np.float)
-        ret[self.actions] = exps / np.sum(exps)
-        return ret
 
 class LeafMCTSNode(MCTSNode[BoardState]):
     terminal = True
@@ -85,18 +81,16 @@ class Algorithm(GameAlgorithm[BoardState]):
     def __init__(self,
                  game: Game[BoardState],
                  evaluator: Evaluator[BoardState],
-                 search_size: int,
-                 temp: float = 0.0) -> None:
+                 opts: Opts = _default_opts) -> None:
         self.game = game
         self.evaluator = evaluator
-        self.search_size = search_size
-        self.temp = temp
+        self.opts = opts
 
     def mk_player(self, players: Set[Player], num_games: int = 1) -> GamePlayer[BoardState]:
         return MCTSPlayer(self, players, num_games)
 
     def _do_searches(self, nodes: np.ndarray) -> np.ndarray:
-        for _ in range(self.search_size):
+        for _ in range(self.opts.search_size):
             cur_nodes = np.copy(nodes)
             final_actions = np.empty(nodes.size, dtype=np.int)
             ongoing_idxs = np.arange(nodes.size)
@@ -104,7 +98,7 @@ class Algorithm(GameAlgorithm[BoardState]):
             histories[:] = [ [] for _ in range(nodes.size) ]
 
             while ongoing_idxs.size > 0:
-                cur_actions = np.array([ node.select_action() for node in cur_nodes[ongoing_idxs] ])
+                cur_actions = np.array([ self._select_action(node) for node in cur_nodes[ongoing_idxs] ])
                 for hist, node in zip(histories[ongoing_idxs], cur_nodes[ongoing_idxs]):
                     hist.append(node)
                 cur_nodes[ongoing_idxs] = [ node.children[action]
@@ -149,7 +143,7 @@ class Algorithm(GameAlgorithm[BoardState]):
                 for prev_node, act in zip(history, acts):
                     prev_node.backup(act, rewards)
 
-        return np.array([ node.probs(self.temp) for node in nodes ])
+        return np.array([ self._move_probs(node) for node in nodes ])
 
     def _setup_nodes(self, states: np.ndarray, nodes: np.ndarray):
         existing = nodes != None
@@ -163,15 +157,45 @@ class Algorithm(GameAlgorithm[BoardState]):
             add_dirichlet = np.array([ state.prev_action == None for state in states[non_existing] ])
             if np.any(add_dirichlet):
                 keep_zero = probses[add_dirichlet] == 0
-                dirichlets = np.random.dirichlet(np.full(self.game.num_actions, dirichlet_alpha),
+                dirichlets = np.random.dirichlet(np.full(self.game.num_actions, self.opts.dirichlet_alpha),
                                                  add_dirichlet.size)
                 dirichlets[keep_zero] = 0.0
                 rescale(dirichlets)
-                probses[add_dirichlet] = dirichlets
+                probses[add_dirichlet] = ((1 - self.opts.dirichlet_eps) * probses[add_dirichlet]
+                                          + self.opts.dirichlet_eps * dirichlets)
 
             nodes[non_existing] = [ InternalMCTSNode(state, probs) for state, probs in zip(states[non_existing], probses) ]
 
         return nodes
+
+    def _watch_turn(self,
+                    node: InternalMCTSNode[BoardState],
+                    hist: List[Tuple[State[BoardState], np.ndarray]],
+                    state: State[BoardState]):
+        if node == None:
+            return None, hist
+
+        node = cast(InternalMCTSNode[BoardState], node.children[state.prev_action])
+        return node, hist + [(state, self._move_probs(node))]
+
+    def _select_action(self, node: InternalMCTSNode[BoardState]):
+        assert node.actions.size > 0, "_select_action called on node with no actions!"
+
+        root_total = math.sqrt(node.total_visits)
+
+        selection_priorities = node.Q + self.opts.c_puct * root_total * node.P / (1 + node.N)
+        return node.actions[np.argmax(selection_priorities)]
+
+    def _move_probs(self, node: InternalMCTSNode[BoardState]) -> np.ndarray:
+        if self.opts.temp == 0.0:
+            ret = np.zeros_like(node.inv_actions)
+            ret[node.actions[np.argmax(node.N)]] = 1.0
+            return ret
+        exps = node.N ** (1.0 / self.opts.temp)
+        ret = np.zeros_like(node.inv_actions, dtype=np.float)
+        ret[node.actions] = exps / np.sum(exps)
+        return ret
+
 
 class MCTSPlayer(GamePlayer[BoardState]):
     def __init__(self,
@@ -195,19 +219,7 @@ class MCTSPlayer(GamePlayer[BoardState]):
     def _watch_turns(self, states: np.ndarray, game_idxs: np.ndarray):
         for state, game_idx in zip(states, game_idxs):
             self.nodes[game_idx], self.hists[game_idx] = (
-                self._watch_turn_stateless(self.nodes[game_idx], self.hists[game_idx], state))
-
-
-    def _watch_turn_stateless(self,
-                              node: InternalMCTSNode[BoardState],
-                              hist: List[Tuple[State[BoardState], np.ndarray]],
-                              state: State[BoardState]):
-        if node == None:
-            return None, hist
-
-        node = cast(InternalMCTSNode[BoardState], node.children[state.prev_action])
-        return node, hist + [(state, node.probs(self.alg.temp))]
-
+                self.alg._watch_turn(self.nodes[game_idx], self.hists[game_idx], state))
 
 def rewards_from_result(game_result: np.ndarray) -> np.ndarray:
     winners = np.count_nonzero(game_result)
@@ -220,9 +232,8 @@ def rewards_from_result(game_result: np.ndarray) -> np.ndarray:
 
 def play_self(game: Game[BoardState],
               evaluator: Evaluator[BoardState],
-              search_size: int,
-              temp: float = 0.0) -> List[Tuple[State[BoardState], np.ndarray, np.ndarray]]:
-    end_state, result, players = play_game(game, [(cast(Set[Player], {0, 1}), Algorithm(game, evaluator, search_size, temp))])
+              opts: Opts = _default_opts) -> List[Tuple[State[BoardState], np.ndarray, np.ndarray]]:
+    end_state, result, players = play_game(game, [(cast(Set[Player], {0, 1}), Algorithm(game, evaluator, opts))])
     hist = players[0].hists[0]
     rewards = rewards_from_result(result)
 
@@ -231,10 +242,9 @@ def play_self(game: Game[BoardState],
 def play_selfs(num_games: int,
                game: Game[BoardState],
                evaluator: Evaluator[BoardState],
-               search_size: int,
-               temp: float = 0.0) -> List[List[Tuple[State[BoardState], np.ndarray, np.ndarray]]]:
+               opts: Opts = _default_opts) -> List[List[Tuple[State[BoardState], np.ndarray, np.ndarray]]]:
     turn_summaries: List[List[Tuple[State[BoardState], np.ndarray, np.ndarray]]] = []
-    _, results, players = play_games(num_games, game, [(cast(Set[Player], {0, 1}), Algorithm(game, evaluator, search_size, temp))])
+    _, results, players = play_games(num_games, game, [(cast(Set[Player], {0, 1}), Algorithm(game, evaluator, opts))])
 
     for result, hist in zip(results, players[0].hists):
         rewards = rewards_from_result(result)
