@@ -98,7 +98,7 @@ class Algorithm(GameAlgorithm[BoardState]):
     def _do_searches(self, nodes: np.ndarray) -> np.ndarray:
         for _ in range(self.search_size):
             cur_nodes = np.copy(nodes)
-            fin_actions = np.empty(nodes.size, dtype=np.int)
+            final_actions = np.empty(nodes.size, dtype=np.int)
             ongoing_idxs = np.arange(nodes.size)
             histories = np.empty(nodes.size, dtype=np.object)
             histories[:] = [ [] for _ in range(nodes.size) ]
@@ -113,54 +113,43 @@ class Algorithm(GameAlgorithm[BoardState]):
                 continue_search = np.array([ node != None and isinstance(node, InternalMCTSNode)
                                              for node in cur_nodes[ongoing_idxs] ])
 
-                fin_actions[ongoing_idxs[~continue_search]] = cur_actions[~continue_search]
+                final_actions[ongoing_idxs[~continue_search]] = cur_actions[~continue_search]
                 ongoing_idxs = ongoing_idxs[continue_search]
 
-            for node, action, history in zip(cur_nodes, fin_actions, histories):
-                self._backup_hist(node, action, history)
+            rewardses = np.empty((nodes.size, self.game.num_players), dtype=np.float)
+            existing_leaves = np.array([ isinstance(node, LeafMCTSNode) for node in cur_nodes ])
+            if np.any(existing_leaves):
+                rewardses[existing_leaves] = [ node.values for node in cur_nodes[existing_leaves] ]
+            if np.any(~existing_leaves):
+                idxs = np.arange(nodes.size)[~existing_leaves]
+                prev_nodes = [ history[-1] for history in histories[idxs] ]
+                new_states = np.array([ self.game.do_action(prev_node.state, final_action)
+                                        for prev_node, final_action in zip(prev_nodes, final_actions[idxs]) ])
+                results = np.array([ self.game.check_end(new_state) for new_state in new_states ])
+                is_over = np.any(results, axis=1)
+                if np.any(is_over):
+                    over_idxs = idxs[is_over]
+                    rewards = np.array([ rewards_from_result(result) for result in results[is_over] ])
+                    rewardses[over_idxs] = rewards
+                    cur_nodes[over_idxs] = [ LeafMCTSNode(new_state, reward)
+                                             for new_state, reward in zip(new_states[is_over], rewards) ]
+                if np.any(~is_over):
+                    not_over_idxs = idxs[~is_over]
+                    probses, rewards = self.evaluator.eval_states(new_states[~is_over])
+                    rewardses[not_over_idxs] = rewards
+                    cur_nodes[not_over_idxs] = [ InternalMCTSNode(new_state, probs)
+                                                 for new_state, probs in zip(new_states[~is_over], probses) ]
+
+                for prev_node, act, new_node in zip(prev_nodes, final_actions[idxs], cur_nodes[idxs]):
+                    prev_node.children[act] = new_node
+
+            for rewards, final_action, history in zip(rewardses, final_actions, histories):
+                acts = [ node.state.prev_action for node in history[1:] ] + [ final_action ]
+
+                for prev_node, act in zip(history, acts):
+                    prev_node.backup(act, rewards)
 
         return np.array([ node.probs(self.temp) for node in nodes ])
-
-    def _do_search(self, node: InternalMCTSNode[BoardState]) -> np.ndarray:
-        for _ in range(self.search_size):
-            cur_node: MCTSNode[BoardState] = node
-            cur_action = None
-            history: List[InternalMCTSNode[BoardState]] = []
-
-            while cur_node and isinstance(cur_node, InternalMCTSNode):
-                cur_action = cur_node.select_action()
-                history.append(cur_node)
-                cur_node = cur_node.children[cur_action]
-
-            self._backup_hist(cur_node, cur_action, history)
-
-        return node.probs(self.temp)
-
-    def _backup_hist(self,
-                     final_node: MCTSNode[BoardState],
-                     final_action: Action,
-                     history: List[InternalMCTSNode[BoardState]]):
-        rewards: float
-        if isinstance(final_node, LeafMCTSNode):
-            rewards = final_node.values
-        else:
-            prev_node = history[-1]
-            new_state = self.game.do_action(prev_node.state, final_action)
-            result = self.game.check_end(new_state)
-            if np.any(result):
-                rewards = rewards_from_result(result)
-                final_node = LeafMCTSNode(new_state, rewards)
-            else:
-                probs, rewards = self.evaluator.eval_state(new_state)
-                final_node = InternalMCTSNode(new_state, probs)
-
-            prev_node.children[final_action] = final_node
-
-        acts = [ node.state.prev_action for node in history[1:] ] + [ final_action ]
-
-        for prev_node, act in zip(history, acts):
-            prev_node.backup(act, rewards)
-
 
     def _setup_nodes(self, states: np.ndarray, nodes: np.ndarray):
         existing = nodes != None
