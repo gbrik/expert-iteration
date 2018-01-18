@@ -16,14 +16,15 @@ class Trainer(Generic[BoardState]):
                  model: Model[BoardState],
                  num_iterations: int,
                  iteration_size: int,
-                 search_size: int = 100) -> None:
+                 self_play_opts: mcts.Opts = mcts.Opts(temp=1.0),
+                 compare_opts: mcts.Opts = mcts._default_opts) -> None:
         self.model = model
         self.game = self.model.game
         self.num_iterations = num_iterations
         self.iteration_size = iteration_size
-        self.self_play_opts = mcts.Opts(search_size=search_size, temp=1.0)
-        self.compare_opts = mcts.Opts(search_size=search_size)
-        self.example_opts = mcts.Opts(search_size=20)
+        self.self_play_opts = self_play_opts
+        self.compare_opts = compare_opts
+        self.example_opts = mcts.Opts(search_size=_example_search_size)
 
     def train_player(self):
         play_example_game = lambda: mcts.play_self(self.game, self.model.train_evaluator, self.example_opts)
