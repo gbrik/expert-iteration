@@ -49,12 +49,10 @@ class Trainer(Generic[BoardState]):
         best_alg = mcts.Algorithm(self.game, self.model.best_evaluator, self.search_size)
         train_alg = mcts.Algorithm(self.game, self.model.train_evaluator, self.search_size)
 
-        for i in range(tot_games):
-            results = play_games(tot_games, self.game, [({0}, best_alg), ({1}, train_alg)])[1]
-            reward += sum([ mcts.rewards_from_result(result)[1] for result in results ])
-        for i in range(tot_games):
-            results = play_games(tot_games, self.game, [({0}, train_alg), ({1}, best_alg)])[1]
-            reward += sum([ mcts.rewards_from_result(result)[0] for result in results ])
+        results = play_games(tot_games, self.game, [({0}, best_alg), ({1}, train_alg)])[1]
+        reward += sum([ mcts.rewards_from_result(result)[1] for result in results ])
+        results = play_games(tot_games, self.game, [({0}, train_alg), ({1}, best_alg)])[1]
+        reward += sum([ mcts.rewards_from_result(result)[0] for result in results ])
 
         avg_reward = reward / (2 * tot_games)
         print(avg_reward)
