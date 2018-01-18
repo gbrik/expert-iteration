@@ -71,6 +71,7 @@ rand_evaluator = mcts.Evaluator[np.ndarray](eval_state=_ttt_eval_state)
 class Model(model.Model[np.ndarray]):
     l2_loss_coeff = 0.01
     hidden_size = 100
+    batch_size = 64
 
     graph = tf.Graph()
     with graph.as_default():
@@ -156,7 +157,7 @@ class Model(model.Model[np.ndarray]):
         self.train_step += 1
 
         for i in range(1000):
-            select = np.random.choice(np.arange(len(self.states)), 64)
+            select = np.random.choice(np.arange(len(self.states)), min(len(self.states), batch_size), replace=False)
 
             feed = {
                 self.tf_boards: self.states[select],
