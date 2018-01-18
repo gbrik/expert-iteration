@@ -239,9 +239,9 @@ def play_selfs(num_games: int,
                game: Game[BoardState],
                evaluator: Evaluator[BoardState],
                opts: Opts = _default_opts) -> List[List[Tuple[State[BoardState], np.ndarray, np.ndarray]]]:
-    turn_summaries: List[List[Tuple[State[BoardState], np.ndarray, np.ndarray]]] = []
     _, results, players = play_games(num_games, game, [(cast(Set[Player], {0, 1}), Algorithm(game, evaluator, opts))])
 
+    turn_summaries: List[List[Tuple[State[BoardState], np.ndarray, np.ndarray]]] = []
     for result, hist in zip(results, players[0].hists):
         rewards = rewards_from_result(result)
         turn_summaries.append([(state, probs, rewards) for state, probs in hist])

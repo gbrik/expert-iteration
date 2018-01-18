@@ -16,13 +16,13 @@ class Trainer(Generic[BoardState]):
                  model: Model[BoardState],
                  num_iterations: int,
                  iteration_size: int,
-                 self_play_opts: mcts.Opts = mcts.Opts(temp=1.0),
+                 train_opts: mcts.Opts = mcts.Opts(temp=1.0),
                  compare_opts: mcts.Opts = mcts._default_opts) -> None:
         self.model = model
         self.game = self.model.game
         self.num_iterations = num_iterations
         self.iteration_size = iteration_size
-        self.self_play_opts = self_play_opts
+        self.train_opts = train_opts
         self.compare_opts = compare_opts
         self.example_opts = mcts.Opts(search_size=_example_search_size)
 
@@ -63,4 +63,4 @@ class Trainer(Generic[BoardState]):
 
 
     def play_games(self) -> List[Tuple[State[BoardState], np.ndarray, np.ndarray]]:
-        return mcts.play_selfs(self.iteration_size, self.game, self.model.best_evaluator, self.self_play_opts)
+        return mcts.play_selfs(self.iteration_size, self.game, self.model.best_evaluator, self.train_opts)
