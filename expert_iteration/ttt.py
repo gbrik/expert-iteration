@@ -68,10 +68,9 @@ def _ttt_eval_state(s: State[np.ndarray]) -> Tuple[np.ndarray, np.ndarray]:
 rand_evaluator = mcts.Evaluator[np.ndarray](eval_state=_ttt_eval_state)
 
 
-class Model(model.Model[np.ndarray]):
+class Model(model.Supervised[np.ndarray]):
     l2_loss_coeff = 0.01
     hidden_size = 100
-    batch_size = 64
 
     graph = tf.Graph()
     with graph.as_default():
@@ -93,9 +92,9 @@ class Model(model.Model[np.ndarray]):
         values = tf.tanh(tf.matmul(hidden, ttt_vw) + ttt_vb)
 
         tf_probs = tf.placeholder(tf.float32, shape=[None, 9])
-        tf_zs = tf.placeholder(tf.float32, shape=[None, 2])
+        tf_rewards = tf.placeholder(tf.float32, shape=[None, 2])
 
-        loss = tf.reduce_mean(tf.square(tf_zs - values))
+        loss = tf.reduce_mean(tf.square(tf_rewards - values))
         loss = loss + tf.reduce_mean(
             tf.nn.softmax_cross_entropy_with_logits(labels=tf_probs, logits=actions))
         for w in weights:
@@ -109,19 +108,19 @@ class Model(model.Model[np.ndarray]):
     chkpnt_file = os.path.join(chkpnt_folder, 'ttt')
 
 
-    def __init__(self):
-        super().__init__(game)
+    def __init__(self, opts: model.SupervisedOpts = model._default_supervised_opts) -> None:
+        super().__init__(game, opts)
 
-        self.states = np.empty((0, 9))
-        self.probs = np.empty((0, 9))
-        self.rewards = np.empty((0, 2))
-        self.players = np.empty((0,), dtype=np.int)
-        self.cutoffs = []
+        self.data = {
+            self.tf_boards: np.empty((0, 9)),
+            self.tf_probs: np.empty((0, 9)),
+            self.tf_rewards: np.empty((0, 2))
+        }
 
         self.train_step = 0
         self.train_sess = None
-        self.best_sess = None
-        self.best_chkpnt = None
+        self.best_sess: tf.Session = None
+        self.best_chkpnt: tf.Session = None
 
     def __enter__(self):
         self.train_sess = tf.Session(graph=self.graph)
@@ -142,7 +141,7 @@ class Model(model.Model[np.ndarray]):
     def eval_states(self,
                     states: List[State[np.ndarray]],
                     using=model.Model.PARAMS_BEST) -> Tuple[np.ndarray, np.ndarray]:
-        feed = { self.tf_boards: np.array([state.board_state for state in states]) }
+        feed = { self.tf_boards: self._parse_states(states) }
         sess = self.best_sess if using == Model.PARAMS_BEST else self.train_sess
         actions, values = sess.run([self.actions, self.values], feed_dict=feed)
         for i in range(actions.shape[0]):
@@ -153,19 +152,11 @@ class Model(model.Model[np.ndarray]):
 
         return (actions, values)
 
-    def train(self, batch_size=64, num_iters=1000):
+    def train(self):
         self.train_step += 1
 
-        for i in range(1000):
-            select = np.random.choice(np.arange(len(self.states)), min(len(self.states), batch_size), replace=False)
-
-            feed = {
-                self.tf_boards: self.states[select],
-                self.tf_probs: self.probs[select],
-                self.tf_zs: self.rewards[select]
-            }
-
-            self.train_sess.run(self.optimizer, feed_dict=feed)
+        for i in range(self.opts.train_iters):
+            self.train_sess.run(self.optimizer, feed_dict=self._gen_batch())
 
     def new_checkpoint(self):
         self.best_chkpnt = self.saver.save(self.train_sess, self.chkpnt_file, self.train_step)
@@ -174,15 +165,13 @@ class Model(model.Model[np.ndarray]):
     def restore_checkpoint(self):
         self.saver.restore(self.train_sess, self.best_chkpnt)
 
-    def add_data(self, data: List[Tuple[State[np.ndarray], np.ndarray, np.ndarray]]):
+    def _parse_states(self, states: List[State[np.ndarray]]) -> np.ndarray:
+        return np.array([ state.board_state for state in states ])
+
+    def _parse_data(self, data: List[Tuple[State[np.ndarray], np.ndarray, np.ndarray]]) -> Dict[Any, np.ndarray]:
         states, probs, rewards = unzip(data)
-        board_states, players = unzip([(state.board_state, state.player) for state in states])
-        start_i = 0
-        if len(self.cutoffs) > 3:
-            start_i = self.cutoffs[0]
-            self.cutoffs = self.cutoffs[1:]
-        self.states = np.concatenate([self.states[start_i:], board_states])
-        self.probs = np.concatenate([self.probs[start_i:], probs])
-        self.rewards = np.concatenate([self.rewards[start_i:], rewards])
-        self.players = np.concatenate([self.players[start_i:], players])
-        self.cutoffs.append(len(players))
+        return {
+            self.tf_boards: self._parse_states(states),
+            self.tf_probs: np.array(probs),
+            self.tf_rewards: np.array(rewards)
+        }
