@@ -33,10 +33,6 @@ class Opts:
 
 _default_opts = Opts()
 
-#c_puct = 1.0
-#dirichlet_eps = 0.25
-#dirichlet_alpha = 0.3
-
 class MCTSNode(Generic[BoardState]):
     def __init__(self, state: State[BoardState]) -> None:
         self.state = state

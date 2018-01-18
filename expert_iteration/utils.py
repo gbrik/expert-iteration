@@ -1,4 +1,5 @@
 import numpy as np
+from hashlib import sha1
 from typing import List, Tuple, Union, Sequence
 
 def unzip(list_of_tuples: Sequence[Tuple]) -> Tuple[List, ...]:
@@ -19,3 +20,6 @@ def softmax(x: np.ndarray, mask: np.ndarray = None) -> np.ndarray:
 
 def rescale(x: np.ndarray) -> np.ndarray:
     return x / np.sum(x, axis=len(x.shape) - 1).reshape((1,) + x.shape[:-1]).transpose()
+
+def hash_arr(x: np.ndarray) -> int:
+    return int(sha1(x.view(np.uint8)).hexdigest(), 16)

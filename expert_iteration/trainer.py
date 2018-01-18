@@ -63,5 +63,4 @@ class Trainer(Generic[BoardState]):
 
 
     def play_games(self) -> List[Tuple[State[BoardState], np.ndarray, np.ndarray]]:
-        result = mcts.play_selfs(self.iteration_size, self.game, self.model.best_evaluator, self.self_play_opts)
-        return sum(result, [])
+        return mcts.play_selfs(self.iteration_size, self.game, self.model.best_evaluator, self.self_play_opts)

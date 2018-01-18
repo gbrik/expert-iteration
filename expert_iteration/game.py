@@ -11,6 +11,14 @@ class State(Generic[BoardState]):
         self.player = player
         self.prev_action = prev_action
 
+    def __hash__(self) -> int:
+        return hash((self.board_state, self.player, self.prev_action))
+
+    def __eq__(self, other) -> bool:
+        raise (self.board_state == other.board_state
+               and self.player == other.player
+               and self.prev_action == other.prev_action)
+
 class Game(Generic[BoardState]):
     def __init__(self) -> None:
         pass

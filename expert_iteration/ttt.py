@@ -6,6 +6,17 @@ from .game import *
 from . import mcts
 from . import model
 
+class TTTState(State[np.ndarray]):
+    def __init__(self, board_state: np.ndarray, player: Player, prev_action: Action) -> None:
+        super().__init__(board_state, player, prev_action)
+        self._hash = hash_arr(board_state)
+
+    def __hash__(self) -> int:
+        return self._hash
+
+    def __eq__(self, other) -> bool:
+        return isinstance(other, TTTState) and np.all(self.board_state == other.board_state)
+
 class _TTT(Game[np.ndarray]):
     _board_shape = (9,)
     num_actions = 9
@@ -15,12 +26,12 @@ class _TTT(Game[np.ndarray]):
         super().__init__()
 
     def gen_root(self) -> State[np.ndarray]:
-        return State(np.zeros(_TTT._board_shape, dtype=np.int), cast(Player, 1), None)
+        return TTTState(np.zeros(_TTT._board_shape, dtype=np.int), cast(Player, 1), None)
 
     def do_action(self, state: State[np.ndarray], action: Action) -> State[np.ndarray]:
         new_board = np.copy(state.board_state)
         new_board[action] = -1 + 2 * state.player
-        return State(new_board, cast(Player, 1 - state.player), action)
+        return TTTState(new_board, cast(Player, 1 - state.player), action)
 
     def valid_actions(self, state: State[np.ndarray]) -> np.ndarray:
         return state.board_state == 0
@@ -47,7 +58,7 @@ class _TTT(Game[np.ndarray]):
                     print('|', end='')
                 print(_TTT._ch[state.board_state[3 * i + j]], end='')
             print('')
-        print('%s\' turn' % ('x' if state.player == 1 else 'o'))
+        print('')
 
     def parse(self, s: str) -> Action:
         try:
@@ -168,10 +179,11 @@ class Model(model.Supervised[np.ndarray]):
     def _parse_states(self, states: List[State[np.ndarray]]) -> np.ndarray:
         return np.array([ state.board_state for state in states ])
 
-    def _parse_data(self, data: List[Tuple[State[np.ndarray], np.ndarray, np.ndarray]]) -> Dict[Any, np.ndarray]:
-        states, probs, rewards = unzip(data)
-        return {
+    def _parse_data(self, data: List[List[Tuple[State[np.ndarray], np.ndarray, np.ndarray]]]) -> Tuple[Dict[Any, np.ndarray], int]:
+        states, probs, rewards = unzip(sum(data, []))
+        parsed = {
             self.tf_boards: self._parse_states(states),
             self.tf_probs: np.array(probs),
             self.tf_rewards: np.array(rewards)
         }
+        return (parsed, len(states))

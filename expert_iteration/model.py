@@ -27,7 +27,7 @@ class Model(Generic[BoardState]):
     def train(self):
         raise NotImplemented
 
-    def add_data(self, data: List[Tuple[State[BoardState], np.ndarray, np.ndarray]]):
+    def add_data(self, data: List[List[Tuple[State[BoardState], np.ndarray, np.ndarray]]]):
         raise NotImplemented
 
     def new_checkpoint(self):
@@ -53,24 +53,24 @@ class Supervised(Model[BoardState]):
         self.opts = opts
         self.cutoffs: List[int] = []
         self.data: Dict[Any, np.ndarray] = dict()
-        self._num_data: int = 0
+        self._num_samples: int = 0
 
-    def _parse_data(self, data: List[Tuple[State[BoardState], np.ndarray, np.ndarray]]) -> Dict[Any, np.ndarray]:
+    def _parse_data(self, data: List[List[Tuple[State[BoardState], np.ndarray, np.ndarray]]]) -> Tuple[Dict[Any, np.ndarray], int]:
         raise NotImplemented
 
     def _gen_batch(self):
-        select = np.random.choice(np.arange(self._num_data),
-                                  min(self._num_data, self.opts.batch_size),
+        select = np.random.choice(np.arange(self._num_samples),
+                                  min(self._num_samples, self.opts.batch_size),
                                   replace=False)
 
         return { key: val[select] for key, val in self.data.items() }
 
-    def add_data(self, data: List[Tuple[State[np.ndarray], np.ndarray, np.ndarray]]):
-        parsed = self._parse_data(data)
+    def add_data(self, data: List[List[Tuple[State[np.ndarray], np.ndarray, np.ndarray]]]):
+        parsed, num_samples = self._parse_data(data)
         start_i = 0
-        self._num_data += len(data)
+        self._num_samples += num_samples
         if len(self.cutoffs) > self.opts.history_size:
             start_i = self.cutoffs[0]
-            self._num_data -= start_i
-            self.cutoffs = self.cutoffs[1:] + [ len(data) ]
+            self._num_samples -= start_i
+            self.cutoffs = self.cutoffs[1:] + [ num_samples ]
         self.data = { key: np.concatenate([val[start_i:], parsed[key]]) for key, val in self.data.items() }
