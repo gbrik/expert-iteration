@@ -16,7 +16,7 @@ class Trainer(Generic[BoardState]):
                  model: Model[BoardState],
                  num_iterations: int,
                  iteration_size: int,
-                 train_opts: mcts.Opts = mcts.Opts(temp=1.0),
+                 train_opts: mcts.Opts = mcts.Opts(temp_fn=lambda _: 1.0),
                  compare_opts: mcts.Opts = mcts._default_opts) -> None:
         self.model = model
         self.game = self.model.game
@@ -27,39 +27,37 @@ class Trainer(Generic[BoardState]):
         self.example_opts = mcts.Opts(search_size=_example_search_size)
 
     def train_player(self):
-        play_example_game = lambda: mcts.play_self(self.game, self.model.train_evaluator, self.example_opts)
-        example_games = [play_example_game()]
-
         for i in range(1, self.num_iterations + 1):
-            example_games.append(play_example_game())
+            print('starting step %d' % i)
             self.model.add_data(self.play_games())
+            print('finished self play, training on game data')
             self.model.train()
 
+            print('finished training, evaluating new checkpoint: ')
             if self.train_is_better():
+                print('improved model' % i)
                 self.model.new_checkpoint()
             else:
+                print('keeping checkpoint' %i)
                 self.model.restore_checkpoint()
 
             print('finished step %d' % i)
-
-        example_games.append(play_example_game())
 
         return example_games
 
     def train_is_better(self):
         tot_games = 10
-        reward = 0
         best_alg = mcts.Algorithm(self.game, self.model.best_evaluator, self.compare_opts)
         train_alg = mcts.Algorithm(self.game, self.model.train_evaluator, self.compare_opts)
 
         results = play_games(tot_games, self.game, [({0}, best_alg), ({1}, train_alg)])[1]
-        reward += sum([ mcts.rewards_from_result(result)[1] for result in results ])
+        x_wins = sum([ (mcts.rewards_from_result(result)[1] + 1) // 2 for result in results ])
         results = play_games(tot_games, self.game, [({0}, train_alg), ({1}, best_alg)])[1]
-        reward += sum([ mcts.rewards_from_result(result)[0] for result in results ])
+        o_wins = sum([ (mcts.rewards_from_result(result)[0] + 1) // 2 for result in results ])
 
-        avg_reward = reward / (2 * tot_games)
-        print(avg_reward)
-        return avg_reward > 0.1
+        win_pct = (x_wins + o_wins) / tot_games
+        print('win percent against previous best checkpoint: %d', int(win_pct * 100))
+        return win_pct > 0.55
 
 
     def play_games(self) -> List[Tuple[State[BoardState], np.ndarray, np.ndarray]]:

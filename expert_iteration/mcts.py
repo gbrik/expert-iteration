@@ -24,12 +24,15 @@ class Opts:
                  dirichlet_eps: float = 0.25,
                  dirichlet_alpha: float = 0.3,
                  search_size: int = 100,
-                 temp: float = 0.0) -> None:
+                 temp_fn: Callable[[int], float] = lambda _: 0.0) -> None:
         self.c_puct = c_puct
         self.dirichlet_eps = dirichlet_eps
         self.dirichlet_alpha = dirichlet_alpha
         self.search_size = search_size
-        self.temp = temp
+        self.temp_fn = temp_fn
+
+def first_n_turns_temp(temp: float, switch_after: int):
+    return lambda turn: temp if turn < switch_after else 0.0
 
 _default_opts = Opts()
 
@@ -183,11 +186,12 @@ class Algorithm(GameAlgorithm[BoardState]):
         return node.actions[np.argmax(selection_priorities)]
 
     def _move_probs(self, node: InternalMCTSNode[BoardState]) -> np.ndarray:
-        if self.opts.temp == 0.0:
+        temp = self.opts.temp_fn(node.state.turn_num)
+        if temp == 0.0:
             ret = np.zeros_like(node.inv_actions)
             ret[node.actions[np.argmax(node.N)]] = 1.0
             return ret
-        exps = node.N ** (1.0 / self.opts.temp)
+        exps = node.N ** (1.0 / temp)
         ret = np.zeros_like(node.inv_actions, dtype=np.float)
         ret[node.actions] = exps / np.sum(exps)
         return ret

@@ -5,10 +5,11 @@ from .utils import *
 from .game import *
 from . import mcts
 from . import model
+import matplotlib.pyplot as plt
 
 class TTTState(State[np.ndarray]):
-    def __init__(self, board_state: np.ndarray, player: Player, prev_action: Action) -> None:
-        super().__init__(board_state, player, prev_action)
+    def __init__(self, board_state: np.ndarray, player: Player, prev_action: Action, turn_num: int) -> None:
+        super().__init__(board_state, player, prev_action, turn_num)
         self._hash = hash_arr(board_state)
 
     def __hash__(self) -> int:
@@ -26,12 +27,12 @@ class _TTT(Game[np.ndarray]):
         super().__init__()
 
     def gen_root(self) -> State[np.ndarray]:
-        return TTTState(np.zeros(_TTT._board_shape, dtype=np.int), cast(Player, 1), None)
+        return TTTState(np.zeros(_TTT._board_shape, dtype=np.int), cast(Player, 1), None, 0)
 
     def do_action(self, state: State[np.ndarray], action: Action) -> State[np.ndarray]:
         new_board = np.copy(state.board_state)
         new_board[action] = -1 + 2 * state.player
-        return TTTState(new_board, cast(Player, 1 - state.player), action)
+        return TTTState(new_board, cast(Player, 1 - state.player), action, state.turn_num + 1)
 
     def valid_actions(self, state: State[np.ndarray]) -> np.ndarray:
         return state.board_state == 0
@@ -60,7 +61,7 @@ class _TTT(Game[np.ndarray]):
             print('')
         print('')
 
-    def parse(self, s: str) -> Action:
+    def parse(self, s: str, _: State[np.ndarray]) -> Action:
         try:
             x, y = s.split()
             res = 3 * (int(x) - 1) + int(y) - 1
@@ -77,7 +78,6 @@ def _ttt_eval_state(s: State[np.ndarray]) -> Tuple[np.ndarray, np.ndarray]:
     return (acts, np.zeros(2))
 
 rand_evaluator = mcts.Evaluator[np.ndarray](eval_state=_ttt_eval_state)
-
 
 class Model(model.Supervised[np.ndarray]):
     l2_loss_coeff = 0.01
@@ -120,7 +120,7 @@ class Model(model.Supervised[np.ndarray]):
 
 
     def __init__(self, opts: model.SupervisedOpts = model._default_supervised_opts) -> None:
-        super().__init__(game, opts)
+        super().__init__(game, opts=opts)
 
         self.data = {
             self.tf_boards: np.empty((0, 9)),
@@ -166,8 +166,12 @@ class Model(model.Supervised[np.ndarray]):
     def train(self):
         self.train_step += 1
 
+        losses = []
         for i in range(self.opts.train_iters):
-            self.train_sess.run(self.optimizer, feed_dict=self._gen_batch())
+            _, loss = self.train_sess.run([self.optimizer, self.loss], feed_dict=self._gen_batch())
+            losses.append(loss)
+        plt.plot(losses)
+        plt.show()
 
     def new_checkpoint(self):
         self.best_chkpnt = self.saver.save(self.train_sess, self.chkpnt_file, self.train_step)

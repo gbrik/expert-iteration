@@ -6,18 +6,20 @@ Action = NewType('Action', int)
 Player = NewType('Player', int)
 
 class State(Generic[BoardState]):
-    def __init__(self, board_state: BoardState, player: Player, prev_action: Action) -> None:
+    def __init__(self, board_state: BoardState, player: Player, prev_action: Action, turn_num: int) -> None:
         self.board_state = board_state
         self.player = player
         self.prev_action = prev_action
+        self.turn_num = turn_num
 
     def __hash__(self) -> int:
-        return hash((self.board_state, self.player, self.prev_action))
+        return hash((self.board_state, self.player, self.prev_action, self.turn_num))
 
     def __eq__(self, other) -> bool:
         raise (self.board_state == other.board_state
                and self.player == other.player
-               and self.prev_action == other.prev_action)
+               and self.prev_action == other.prev_action
+               and self.turn_num == other.turn_num)
 
 class Game(Generic[BoardState]):
     def __init__(self) -> None:
@@ -54,7 +56,7 @@ class Game(Generic[BoardState]):
         print('Player %d\'s turn:' % state.player)
         print(state.board_state)
 
-    def parse(self, s: str):
+    def parse(self, s: str, state: State[BoardState]):
         return int(s)
 
 class GamePlayer(Generic[BoardState]):
@@ -145,25 +147,8 @@ class GameAlgorithm(Generic[BoardState]):
         raise NotImplemented
 
 def play_game(game: Game[BoardState], mk_players: List[Tuple[Set[Player], GameAlgorithm[BoardState]]]):
-    players = [ alg.mk_player(playing_as) for playing_as, alg in mk_players ]
-    cur_state = game.gen_root()
-    cur_ends = game.check_end(cur_state)
-    while not np.any(cur_ends):
-        cur_action = None
-        for player in players:
-            act = player.next_turn(cur_state)
-            if act != None:
-                cur_action = act
-        if cur_action == None:
-            print(cur_state.board_state)
-            raise ValueError('No player played a valid action.')
-        if(cur_state.board_state[cur_action] != 0): #type: ignore
-            print('play_game invalid action: ', cur_state.board_state, cur_state.player, cur_action)
-        cur_state = game.do_action(cur_state, cur_action)
-        cur_ends = game.check_end(cur_state)
-    if np.sum(np.abs(cur_state.board_state)) < 3:
-        print('ending early: ', cur_state.board_state)
-    return cur_state, cur_ends, players
+    states, ends, players = play_games(1, game, mk_players)
+    return states[0], ends[0], players
 
 def play_games(num_games: int, game: Game[BoardState], mk_players: List[Tuple[Set[Player], GameAlgorithm[BoardState]]]):
     players = [ alg.mk_player(playing_as, num_games) for playing_as, alg in mk_players ]
@@ -193,7 +178,7 @@ class UserAlgorithm(GameAlgorithm[BoardState]):
             ret = input('What is your move? ')
             while True:
                 try:
-                    parsed = self.game.parse(ret)
+                    parsed = self.game.parse(ret, state)
                 except ValueError:
                     ret = input('What is your move? ')
                 else:

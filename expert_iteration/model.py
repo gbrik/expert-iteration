@@ -38,11 +38,11 @@ class Model(Generic[BoardState]):
 
 class SupervisedOpts:
     def __init__(self,
-                 batch_size: int = 64,
+                 batch_size: int = 32,
                  train_iters: int = 1000,
                  history_size: int = 10) -> None:
-        self.batch_size = 64
-        self.train_iters = 1000
+        self.batch_size = batch_size
+        self.train_iters = train_iters
         self.history_size = history_size
 
 _default_supervised_opts = SupervisedOpts()
